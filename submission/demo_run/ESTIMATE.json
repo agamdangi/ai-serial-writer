@@ -1,0 +1,66 @@
+{
+  "target_episodes": 200,
+  "observed_calls": 47,
+  "observed_planning_calls": 2,
+  "observed_planning_cost": null,
+  "projected_episode_generation_cost": null,
+  "observed_cost": null,
+  "average_calls_per_episode": 3.0,
+  "average_cost_per_episode": null,
+  "estimated_cost_200": null,
+  "estimated_calls_200": 690.0,
+  "estimated_latency_seconds": null,
+  "estimated_wait_seconds": null,
+  "estimated_total_seconds": null,
+  "synthetic_trace": true,
+  "projection_method": "Observed successful LLM calls per approved episode, plus a 15% revision/retry reserve.",
+  "cost_reduction_options": [
+    "Use the lower-cost configured model for extraction and routine audits.",
+    "Cache stable world/character context and batch arc planning by act.",
+    "Skip a second judge call when deterministic checks pass and retain human approval.",
+    "Use short structured summaries for old episodes and reserve full context for the recent window."
+  ],
+  "scenario_estimate": {
+    "kind": "assumption_based_not_live_measurement",
+    "assumptions": {
+      "episodes": 200,
+      "calls_per_episode": "one draft, one extraction, one judge; 15% reserve",
+      "planning_calls": 2,
+      "planning_input_tokens_per_call": 6000,
+      "planning_output_tokens_per_call": 1000,
+      "estimated_network_latency_seconds_per_call": 2,
+      "human_review_time_included": false
+    },
+    "roles": {
+      "draft": {
+        "preferred_model": "gemini-3.7-flash",
+        "assumed_input_tokens": 5000,
+        "assumed_output_tokens": 1200,
+        "configured_input_price_per_million": 0.3,
+        "configured_output_price_per_million": 2.5,
+        "configured_rpm": 5
+      },
+      "extract": {
+        "preferred_model": "gemini-3.5-flash-lite",
+        "assumed_input_tokens": 1500,
+        "assumed_output_tokens": 350,
+        "configured_input_price_per_million": 0.1,
+        "configured_output_price_per_million": 0.4,
+        "configured_rpm": 15
+      },
+      "judge": {
+        "preferred_model": "gemini-3.1-flash-lite",
+        "assumed_input_tokens": 2500,
+        "assumed_output_tokens": 250,
+        "configured_input_price_per_million": 0.1,
+        "configured_output_price_per_million": 0.4,
+        "configured_rpm": 15
+      }
+    },
+    "estimated_cost_usd": 3.56,
+    "estimated_rate_limit_floor_minutes": 46.4,
+    "estimated_provider_time_minutes": 69.5,
+    "caveat": "Uses configured preferred-model prices and quotas plus assumed token use; actual fallback model, retries, provider pricing, and quota waits will change this estimate."
+  },
+  "summary": "Synthetic run: live trace cost/time unavailable. Assumption-based scenario for 200 episodes is about $3.56 and 1.2 provider hours, excluding human review."
+}

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from serial_writer.config import Settings
 from serial_writer.llm import LLMClient, LLMResult
-from serial_writer.models import StateDelta, StoryState
+from serial_writer.domain.models import StateDelta, StoryState
 
 
 EXTRACTOR_SYSTEM_PROMPT = """You are a meticulous continuity editor and lore keeper for a fiction series.

@@ -53,14 +53,23 @@ class BudgetGuard:
                     continue
                 try:
                     data = json.loads(line)
-                    cost = float(data.get("cost", 0.0))
+                    is_legacy_charge = data.get("event") == "charge"
+                    is_llm_call = data.get("event") == "llm_call"
+                    is_llm_attempt = data.get("event") == "llm_attempt"
+                    if not (is_legacy_charge or is_llm_call or is_llm_attempt):
+                        continue
+                    cost = float(data.get("cost", data.get("notional_cost_usd", 0.0))) if not is_llm_attempt else 0.0
                     ep = data.get("episode")
+                    if ep is None and (is_llm_call or is_llm_attempt):
+                        ep = 0
 
                     self.total_cost += cost
                     if ep is not None:
                         ep = int(ep)
                         self.episode_costs[ep] = self.episode_costs.get(ep, 0.0) + cost
-                        self.episode_calls[ep] = self.episode_calls.get(ep, 0) + 1
+                        self.episode_calls[ep] = self.episode_calls.get(ep, 0) + int(
+                            data.get("attempts", 1) if is_legacy_charge else int(data.get("attempts", 1))
+                        )
                 except (json.JSONDecodeError, ValueError, TypeError):
                     continue
 
@@ -95,6 +104,12 @@ class BudgetGuard:
             cost=cost,
         )
 
+    def record_llm_call(self, episode: int, cost: float) -> None:
+        """Update the in-process budget ledger; the LLM trace is the durable record."""
+        self.total_cost += cost
+        self.episode_costs[episode] = self.episode_costs.get(episode, 0.0) + cost
+        self.episode_calls[episode] = self.episode_calls.get(episode, 0) + 1
+
 
 def summarize_trace(run_dir: Path) -> Dict[str, Any]:
     trace_path = run_dir / "trace.jsonl"
@@ -108,10 +123,11 @@ def summarize_trace(run_dir: Path) -> Dict[str, Any]:
                     except json.JSONDecodeError:
                         pass
 
-    total_calls = len(events)
-    total_cost = sum(float(e.get("notional_cost_usd", 0.0)) for e in events)
-    total_in_tok = sum(int(e.get("in_tok", 0)) for e in events)
-    total_out_tok = sum(int(e.get("out_tok", 0)) for e in events)
+    calls = [event for event in events if event.get("event") == "llm_call"]
+    total_calls = len(calls)
+    total_cost = sum(float(e.get("notional_cost_usd", 0.0)) for e in calls)
+    total_in_tok = sum(int(e.get("in_tok", 0)) for e in calls)
+    total_out_tok = sum(int(e.get("out_tok", 0)) for e in calls)
 
     return {
         "total_calls": total_calls,

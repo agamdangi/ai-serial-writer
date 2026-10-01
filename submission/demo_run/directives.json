@@ -1,0 +1,22 @@
+{
+  "standing": [
+    {
+      "id": "dir_6_1",
+      "text": "Mara must corroborate every recovered signal record with a living witness before acting on it.",
+      "scope": "character",
+      "from_ep": 6,
+      "to_ep": null,
+      "active": true
+    }
+  ],
+  "active": [
+    {
+      "id": "dir_6_1",
+      "text": "Mara must corroborate every recovered signal record with a living witness before acting on it.",
+      "scope": "character",
+      "from_ep": 6,
+      "to_ep": null,
+      "active": true
+    }
+  ]
+}

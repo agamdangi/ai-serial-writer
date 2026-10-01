@@ -1,42 +1,19 @@
 ﻿import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from serial_writer.domain.models import (
+    CharacterState,
+    Fact,
+    Relationship,
+    StateDelta,
+    StoryState,
+    Thread,
+)
 
 
-class CharacterState(BaseModel):
-    name: str
-    status: str = "alive"
-    location: str = ""
-
-
-class Fact(BaseModel):
-    text: str
-    subject: str
-    valid_from_ep: int
-    source_ep: int
-
-
-class Thread(BaseModel):
-    id: str
-    description: str
-    planted_ep: int
-    status: str = "active"
-
-
-class StateDelta(BaseModel):
-    ep_no: int
-    summary: str
-    characters_upserts: List[CharacterState] = Field(default_factory=list)
-    new_facts: List[Fact] = Field(default_factory=list)
-    threads_planted: List[Thread] = Field(default_factory=list)
-    threads_resolved: List[str] = Field(default_factory=list)
-
-
-class WorldState(BaseModel):
-    characters: Dict[str, CharacterState] = Field(default_factory=dict)
-    facts: List[Fact] = Field(default_factory=list)
-    threads: Dict[str, Thread] = Field(default_factory=dict)
+class WorldState(StoryState):
     summaries: Dict[int, str] = Field(default_factory=dict)
 
 
@@ -68,6 +45,96 @@ class StateStore:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         return {}
+
+    def save_bible(self, bible_data: Dict[str, Any]) -> None:
+        path = self.run_dir / "bible.json"
+        path.write_text(json.dumps(bible_data, indent=2), encoding="utf-8")
+
+    def load_bible(self) -> Dict[str, Any]:
+        path = self.run_dir / "bible.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        return {}
+
+    def get_bible(self) -> Dict[str, Any]:
+        return self.load_bible()
+
+    def get_episode(self, ep_no: int) -> Optional[Dict[str, Any]]:
+        return self.load_episode(ep_no)
+
+    def get_beats(self, start_ep: int, end_ep: Optional[int] = None) -> List[Any]:
+        plan_data = self.load_plan()
+        raw_beats = []
+        if isinstance(plan_data, dict):
+            raw_beats = plan_data.get("beats", plan_data.get("arc", []))
+        elif isinstance(plan_data, list):
+            raw_beats = plan_data
+        if not raw_beats:
+            return []
+        end_limit = end_ep if end_ep is not None else start_ep
+        filtered = []
+        for beat in raw_beats:
+            ep_no = beat.get("ep_no", beat.get("episode")) if isinstance(beat, dict) else getattr(beat, "ep_no", getattr(beat, "episode", None))
+            if ep_no is None:
+                continue
+            if start_ep <= ep_no <= end_limit:
+                filtered.append(beat)
+        return filtered
+
+    def update_beats(self, beats: List[Any], new_version: int | None = None) -> None:
+        """Replace only the requested episode beats, preserving the rest of the plan."""
+        plan = self.load_plan()
+        raw_beats = plan.get("beats", []) if isinstance(plan, dict) else plan
+        replacements = {}
+        for beat in beats:
+            item = beat.model_dump() if hasattr(beat, "model_dump") else dict(beat)
+            episode = item.get("ep_no", item.get("episode"))
+            if episode is not None:
+                item["ep_no"] = episode
+                item["episode"] = episode
+                if new_version is not None:
+                    item["plan_version"] = new_version
+                replacements[int(episode)] = item
+        updated = []
+        seen = set()
+        for old in raw_beats:
+            old_data = old.model_dump() if hasattr(old, "model_dump") else dict(old)
+            episode = old_data.get("ep_no", old_data.get("episode"))
+            if episode is not None and int(episode) in replacements:
+                updated.append(replacements[int(episode)])
+                seen.add(int(episode))
+            else:
+                updated.append(old_data)
+        updated.extend(item for number, item in replacements.items() if number not in seen)
+        if isinstance(plan, dict):
+            plan["beats"] = updated
+            if new_version is not None:
+                plan["plan_version"] = new_version
+        else:
+            plan = {"beats": updated, "plan_version": new_version or 1}
+        self.save_plan(plan)
+
+    def last_approved_ep(self) -> int:
+        last_ep = 0
+        for path in self.episodes_dir.glob("episode_*.json"):
+            try:
+                ep_no = int(path.stem.split("_")[-1])
+            except ValueError:
+                continue
+            last_ep = max(last_ep, ep_no)
+        for path in (self.run_dir / "summaries").glob("summary_*.txt"):
+            try:
+                ep_no = int(path.stem.split("_")[-1])
+            except ValueError:
+                continue
+            last_ep = max(last_ep, ep_no)
+        for path in self.run_dir.glob("delta_ep_*.json"):
+            try:
+                ep_no = int(path.stem.split("_")[-1])
+            except ValueError:
+                continue
+            last_ep = max(last_ep, ep_no)
+        return last_ep
 
     def save_draft(self, ep_no: int, text: str, summary: str) -> str:
         version = "v1"
@@ -121,8 +188,26 @@ class StateStore:
                     f_obj = Fact(**fact) if isinstance(fact, dict) else fact
                     state.facts.append(f_obj)
 
+                for retired in data.get("retired_facts", []):
+                    state.facts = [
+                        fact for fact in state.facts
+                        if retired not in {fact.text, fact.subject}
+                    ]
+
+                for relation in data.get("relationships_upserts", []):
+                    relation_obj = Relationship(**relation) if isinstance(relation, dict) else relation
+                    state.relationships = [
+                        item for item in state.relationships
+                        if not (item.a == relation_obj.a and item.b == relation_obj.b and item.kind == relation_obj.kind)
+                    ]
+                    state.relationships.append(relation_obj)
+
                 for thread in data.get("threads_planted", []):
+                    if isinstance(thread, dict) and thread.get("status") == "active":
+                        thread = {**thread, "status": "open"}
                     t_obj = Thread(**thread) if isinstance(thread, dict) else thread
+                    if t_obj.status == "active":
+                        t_obj.status = "open"
                     state.threads[t_obj.id] = t_obj
 
                 for thread_id in data.get("threads_resolved", []):
@@ -165,6 +250,56 @@ class StateStore:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         return {"standing": [], "active": []}
+
+    def active_directives(self, current_ep: int) -> List[Any]:
+        from serial_writer.domain.models import Directive
+
+        directives_data = self.get_active_directives()
+        active = directives_data.get("active", []) or directives_data.get("standing", [])
+        parsed = []
+        for item in active:
+            if not isinstance(item, dict) or not item.get("active", True):
+                continue
+            try:
+                directive = Directive.model_validate(item)
+            except Exception:
+                continue
+            if directive.from_ep <= current_ep and (directive.to_ep is None or directive.to_ep >= current_ep):
+                parsed.append(directive)
+        return parsed
+
+    def add_directive(self, directive: Any) -> None:
+        data = self.get_active_directives()
+        item = directive.model_dump() if hasattr(directive, "model_dump") else dict(directive)
+        for key in ("active", "standing"):
+            entries = data.setdefault(key, [])
+            if not any(existing.get("id") == item.get("id") for existing in entries if isinstance(existing, dict)):
+                entries.append(item)
+        self.save_directives(data)
+
+    def deactivate_directive(self, directive_id: str) -> None:
+        data = self.get_active_directives()
+        for key in ("active", "standing"):
+            for item in data.get(key, []):
+                if isinstance(item, dict) and item.get("id") == directive_id:
+                    item["active"] = False
+        self.save_directives(data)
+
+    def next_directive_id(self) -> int:
+        existing = self.get_active_directives()
+        count = 0
+        for key in ("active", "standing"):
+            for item in existing.get(key, []):
+                if isinstance(item, dict):
+                    count = max(count, int(item.get("id", "0").split("_")[-1]) if item.get("id", "0").split("_")[-1].isdigit() else 0)
+        return count + 1
+
+    def mark_stale(self, start_ep: int, end_ep: int, reason: str = "") -> None:
+        stale_path = self.run_dir / "stale.json"
+        data = json.loads(stale_path.read_text(encoding="utf-8")) if stale_path.exists() else {}
+        key = f"{start_ep}:{end_ep}"
+        data[key] = {"reason": reason, "start_ep": start_ep, "end_ep": end_ep}
+        stale_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 # Aliases

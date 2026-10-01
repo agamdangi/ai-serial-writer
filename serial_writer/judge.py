@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from serial_writer.config import Settings
 from serial_writer.llm import LLMClient, LLMResult
-from serial_writer.models import ArcBeat, StoryState
+from serial_writer.domain.models import ArcBeat, StoryState
 
 
 class JudgeReport(BaseModel):

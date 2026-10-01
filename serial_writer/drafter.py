@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from serial_writer.config import Settings
 from serial_writer.llm import LLMClient, LLMResult
-from serial_writer.models import ArcBeat, Directive, StoryState
+from serial_writer.domain.models import ArcBeat, Directive, StoryState
 
 
 class DraftOutput(BaseModel):
@@ -43,6 +43,7 @@ class Drafter:
         state: StoryState,
         context_summary: str,
         directives: List[Directive],
+        additional_guidance: str = "",
     ) -> str:
         active_dirs_str = "\n".join([f"- [{d.scope.upper()}] {d.text}" for d in directives]) or "None"
         char_str = "\n".join([
@@ -67,6 +68,9 @@ class Drafter:
 ### KNOWN CHARACTERS
 {char_str}
 
+### HUMAN GUIDANCE FOR THIS REVISION
+{additional_guidance or 'None'}
+
 Write Episode {beat.ep_no} following all guidelines.
 """
         return prompt.strip()
@@ -80,9 +84,10 @@ Write Episode {beat.ep_no} following all guidelines.
         *,
         episode: int,
         forced_model: str | None = None,
+        additional_guidance: str = "",
     ) -> tuple[DraftOutput, LLMResult]:
         """Draft a single episode using the `draft` LLM role."""
-        prompt = self.build_prompt(beat, state, context_summary, directives)
+        prompt = self.build_prompt(beat, state, context_summary, directives, additional_guidance)
         
         role = "draft"
         if forced_model:

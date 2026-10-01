@@ -1,5 +1,5 @@
 from serial_writer.config import Settings, ModelSpec
-from serial_writer.doctor import resolve_models_from_list
+from serial_writer.doctor import resolve_models, resolve_models_from_list
 
 
 def test_model_name_resolution():
@@ -30,3 +30,21 @@ def test_resolution_drops_missing_and_handles_empty():
     available_api_models = ["models/gemini-1.5-flash"]
     resolved = resolve_models_from_list(models, available_api_models)
     assert "nonexistent-model" not in resolved
+
+
+def test_model_listing_501_falls_back_to_configured_ids(tmp_path):
+    class UnavailableListingClient:
+        def list_available_models(self):
+            raise RuntimeError("501 UNIMPLEMENTED: model listing is unsupported")
+
+    model = ModelSpec(match=["gemini", "flash"], exclude=[], rpm=5, tpm=250000, rpd=20)
+    settings = Settings(
+        models={"gemini-2.5-flash": model},
+        roles={"extract": ["gemini-2.5-flash"]},
+        runs_dir=tmp_path,
+    )
+
+    resolved = resolve_models(UnavailableListingClient(), settings, tmp_path)
+
+    assert resolved == {"gemini-2.5-flash": "gemini-2.5-flash"}
+    assert not (tmp_path / "models_resolved.json").exists()

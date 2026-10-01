@@ -6,13 +6,13 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 import zoneinfo
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from google import genai
 from google.genai import types
 
 from serial_writer.config import Settings, ModelSpec
-from serial_writer.trace import append_event
+from serial_writer.trace import BudgetExceeded, BudgetGuard, append_event
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -31,7 +31,7 @@ class LLMResult(BaseModel):
     latency_s: float
     model: str
     wait_s: float = 0.0
-    fallbacks: List[str] = []
+    fallbacks: List[str] = Field(default_factory=list)
     real_cost_usd: float = 0.0
     notional_cost_usd: float = 0.0
 
@@ -56,6 +56,12 @@ class LLMClient:
         self.sticky_primaries: Dict[str, str] = {}
         self.request_timestamps: Dict[str, List[float]] = {}
         self.token_timestamps: Dict[str, List[Tuple[float, int]]] = {}
+        self.budget_guard = BudgetGuard(
+            per_episode_cap=settings.per_episode_cost_cap_usd,
+            max_calls_per_episode=settings.max_calls_per_episode,
+            total_cap=settings.total_budget_cap_usd,
+            run_dir=run_dir,
+        )
 
     def _get_tz_date(self) -> str:
         try:
@@ -309,36 +315,91 @@ class LLMClient:
         out_tok = 0
         thought_tok = 0
         attempt = 0
+        last_error: Exception | None = None
         t0 = self.clock()
 
         while attempt < self.settings.max_retries:
             try:
+                estimated_cost = (
+                    est_prompt_tokens / 1_000_000.0 * spec.price_in
+                    + max_tokens / 1_000_000.0 * spec.price_out
+                )
+                budget_episode = episode if episode is not None else 0
+                self.budget_guard.check_before_call(
+                    budget_episode,
+                    estimated_cost=max(estimated_cost, 0.000001),
+                )
                 attempt += 1
                 res_dict = self._call_gemini(selected_name, contents, config)
                 result_text = res_dict.get("text", "")
                 usage = res_dict.get("usage", {})
                 in_tok = usage.get("input_tokens", est_prompt_tokens)
                 out_tok = usage.get("output_tokens", int(len(result_text) / 4))
+                last_error = None
                 break
             except Exception as err:
+                if isinstance(err, BudgetExceeded):
+                    raise
                 err_msg = str(err)
+                last_error = err
                 if "401" in err_msg or "403" in err_msg:
                     raise RuntimeError(f"Authentication failure (401/403). Check GEMINI_API_KEY: {err_msg}")
                 if "thinking" in err_msg.lower() and config and hasattr(config, "thinking_config"):
                     config.thinking_config = None
                     continue
-                if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                transient_service_error = any(
+                    marker in err_msg.upper()
+                    for marker in ("502", "503", "504", "UNAVAILABLE", "INTERNAL")
+                )
+                if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg or transient_service_error:
+                    self.budget_guard.record_llm_call(budget_episode, 0.0)
                     if "daily" in err_msg.lower() or "per_day" in err_msg.lower():
                         self._mark_exhausted(selected_name)
                         return self.complete(
                             role, system, user, step=step, episode=episode, max_tokens=max_tokens, temperature=temperature, schema=schema
                         )
                     backoff = (2 ** attempt) + random.uniform(0.1, 0.5)
+                    append_event(
+                        self.run_dir,
+                        event="llm_attempt",
+                        step=step,
+                        episode=episode,
+                        role=role,
+                        model=selected_name,
+                        retry_n=attempt,
+                        decision="retry",
+                        error=err_msg,
+                    )
                     time.sleep(backoff)
                     total_wait_s += backoff
                 else:
+                    self.budget_guard.record_llm_call(budget_episode, 0.0)
+                    append_event(
+                        self.run_dir,
+                        event="llm_attempt",
+                        step=step,
+                        episode=episode,
+                        role=role,
+                        model=selected_name,
+                        retry_n=attempt - 1,
+                        decision="failure" if attempt >= self.settings.max_retries else "retry",
+                        error=err_msg,
+                    )
                     if attempt >= self.settings.max_retries:
                         raise err
+
+        if last_error is not None:
+            append_event(
+                self.run_dir,
+                step=step,
+                episode=episode,
+                role=role,
+                model=selected_name,
+                retry_n=attempt,
+                decision="failure",
+                error=str(last_error),
+            )
+            raise last_error
 
         latency = self.clock() - t0
         now = self.clock()
@@ -347,7 +408,13 @@ class LLMClient:
         self.token_timestamps.setdefault(selected_name, []).append((now, in_tok + out_tok))
         self._record_usage(selected_name, req_count=1, tok_count=in_tok + out_tok)
 
-        notional_cost = (in_tok / 1_000_000.0 * spec.price_in) + (out_tok / 1_000_000.0 * spec.price_out)
+        notional_cost = (
+            0.0
+            if self.transport is not None
+            else (in_tok / 1_000_000.0 * spec.price_in) + (out_tok / 1_000_000.0 * spec.price_out)
+        )
+
+        self.budget_guard.record_llm_call(budget_episode, notional_cost)
 
         llm_res = LLMResult(
             text=result_text,
@@ -364,6 +431,8 @@ class LLMClient:
 
         append_event(
             self.run_dir,
+            event="llm_call",
+            synthetic=self.transport is not None,
             step=step,
             episode=episode,
             role=role,

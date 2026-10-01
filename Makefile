@@ -1,4 +1,4 @@
-.PHONY: install doctor test demo-fake clean
+.PHONY: install doctor test demo-fake demo-submission lint clean
 
 install:
 	pip install -r requirements.txt
@@ -10,8 +10,15 @@ doctor:
 test:
 	python -m pytest
 
+lint:
+	python -m compileall -q serial_writer tests
+
 demo-fake:
-	python -m serial_writer demo --fake
+	python -m serial_writer demo --fake --run assignment_demo
+
+demo-submission:
+	python -m serial_writer demo --fake --run assignment_demo
+	python -m serial_writer finalize --run assignment_demo
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache

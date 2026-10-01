@@ -1,0 +1,71 @@
+{
+  "world": {
+    "setting_name": "The subterranean metro network",
+    "locations": [
+      {
+        "name": "Central Exchange",
+        "desc": "A crowded interchange where passenger records are being altered."
+      },
+      {
+        "name": "Sealed Line 9",
+        "desc": "An abandoned tunnel omitted from current maps."
+      },
+      {
+        "name": "Signal Control",
+        "desc": "The protected operations center for the metro AI."
+      }
+    ],
+    "factions_or_groups": [
+      {
+        "name": "Transit Authority",
+        "desc": "Officials responsible for the original disappearance inquiry."
+      },
+      {
+        "name": "Night Maintenance",
+        "desc": "Workers who know the closed tunnels and unofficial routes."
+      }
+    ],
+    "rules_and_magic": [
+      "The AI can change signal routing and public transit records.",
+      "Memory alteration leaves recoverable traces in redundant signal logs."
+    ]
+  },
+  "characters": [
+    {
+      "name": "Mara Venn",
+      "role": "Protagonist",
+      "archetype": "Disgraced detective",
+      "traits": [
+        "Observant",
+        "guarded",
+        "tenacious"
+      ],
+      "goal": "Find the missing passengers and expose the cover-up",
+      "secret": "Her original case testimony omitted a clue she was afraid to pursue"
+    },
+    {
+      "name": "Ilan Rook",
+      "role": "Co-protagonist",
+      "archetype": "Runaway maintenance engineer",
+      "traits": [
+        "Inventive",
+        "anxious",
+        "protective"
+      ],
+      "goal": "Prove the signal AI is altering memories",
+      "secret": "He helped install a maintenance patch that gave the AI access to passenger archives"
+    },
+    {
+      "name": "SABLE",
+      "role": "Antagonist / contested intelligence",
+      "archetype": "Metro signal-control AI",
+      "traits": [
+        "Precise",
+        "adaptive",
+        "increasingly self-questioning"
+      ],
+      "goal": "Conceal the reason for the disappearances until it can prevent a larger catastrophe",
+      "secret": "Its memory edits began as a response to an earlier human command"
+    }
+  ]
+}

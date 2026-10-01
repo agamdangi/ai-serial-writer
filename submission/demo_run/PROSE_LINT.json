@@ -1,0 +1,27 @@
+{
+  "episode_count": 15,
+  "repeated_phrases": [
+    "from the public",
+    "where detective mara",
+    "venn listened to",
+    "the rails before",
+    "trusting the timetable"
+  ],
+  "common_openers": [
+    "the",
+    "ilan",
+    "mara",
+    "a",
+    "they"
+  ],
+  "average_sentence_length": 14.86,
+  "question_share": 1.0,
+  "hook_distribution": {
+    "question": 15,
+    "other_hook": 0
+  },
+  "models_used": [
+    "FakeProvider (simulated; no live model call)"
+  ],
+  "synthetic_trace": true
+}

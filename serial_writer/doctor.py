@@ -49,6 +49,16 @@ def resolve_models(client: LLMClient, settings: Settings, run_dir: Path | None =
     try:
         available_ids = client.list_available_models()
     except Exception as err:
+        error_text = str(err).upper()
+        if "501" in error_text and "UNIMPLEMENTED" in error_text:
+            console.print(
+                "[yellow]Gemini model listing is unsupported (501); "
+                "checking configured model IDs directly instead.[/yellow]"
+            )
+            # The current config uses API model IDs as its keys. Do not cache
+            # this assumption; the subsequent generation ping validates it.
+            return {name: name for name in settings.models}
+
         console.print(f"[bold red]Failed to fetch model list from Gemini API:[/] {err}")
         if cache_path.exists():
             console.print("[yellow]Using cached model resolutions.[/yellow]")
@@ -111,6 +121,7 @@ def run_doctor(ping_all: bool = False):
             console.print(f"[bold green]Ping test successful:[/] {res.text.strip()}")
         except Exception as ping_err:
             console.print(f"[bold red]Ping test failed:[/] {ping_err}")
+            sys.exit(1)
 
     if ping_all:
         console.print("\n[bold yellow]Pinging all resolved models (--ping-all)...[/bold yellow]")

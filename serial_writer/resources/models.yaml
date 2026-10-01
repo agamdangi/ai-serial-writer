@@ -1,0 +1,18 @@
+day_boundary_tz: America/Los_Angeles
+models:
+  gemini-3.8-flash:      {match: ["3.8", "flash"], exclude: ["lite", "tts", "live", "image"], rpm: 5, tpm: 250000, rpd: 20, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.30, price_out: 2.50}
+  gemini-3.7-flash:      {match: ["3.7", "flash"], exclude: ["lite", "tts", "live", "image"], rpm: 5, tpm: 250000, rpd: 20, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.30, price_out: 2.50}
+  gemini-3.6-flash:      {match: ["3.6", "flash"], exclude: ["lite", "tts", "live", "image"], rpm: 5, tpm: 250000, rpd: 20, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.30, price_out: 2.50}
+  gemini-3.5-flash:      {match: ["3.5", "flash"], exclude: ["lite", "tts", "live", "image", "transcribe"], rpm: 5, tpm: 250000, rpd: 20, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.30, price_out: 2.50}
+  gemini-3-flash:        {match: ["3-flash"], exclude: ["lite", "tts", "live", "image"], rpm: 5, tpm: 250000, rpd: 20, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.30, price_out: 2.50}
+  gemini-2.5-flash:      {match: ["2.5", "flash"], exclude: ["lite", "tts", "live", "image", "audio"], rpm: 5, tpm: 250000, rpd: 20, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.30, price_out: 2.50}
+  gemini-3.5-flash-lite: {match: ["3.5", "flash", "lite"], exclude: ["tts", "live", "image"], rpm: 15, tpm: 250000, rpd: 500, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.10, price_out: 0.40}
+  gemini-3.1-flash-lite: {match: ["3.1", "flash", "lite"], exclude: ["tts", "live", "image"], rpm: 15, tpm: 250000, rpd: 500, json_mode: true, system_prompt: true, max_prompt_tokens: 200000, price_in: 0.10, price_out: 0.40}
+  gemma-4-31b:           {match: ["gemma", "4", "31b"], exclude: [], rpm: 30, tpm: 16000, rpd: 14400, json_mode: false, system_prompt: false, max_prompt_tokens: 8000, price_in: 0.0, price_out: 0.0}
+roles:
+  plan: [gemini-3.8-flash, gemini-3.5-flash, gemini-3-flash, gemini-3.5-flash-lite]
+  draft: [gemini-3.7-flash, gemini-3.6-flash, gemini-3.8-flash, gemini-3.5-flash, gemini-3-flash, gemini-2.5-flash, gemini-3.5-flash-lite]
+  extract: [gemini-3.5-flash-lite, gemini-3.1-flash-lite, gemma-4-31b]
+  judge: [gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemma-4-31b]
+context_budget_tokens: {plan: 12000, draft: 10000, extract: 6000, judge: 6000}
+thinking: {plan: default, draft: low, extract: off, judge: off}
